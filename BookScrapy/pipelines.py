@@ -75,7 +75,7 @@ class SaveToPostgresPipeline:
     def open_spider(self, spider):
         hostname = 'localhost'
         username = 'postgres'
-        password = '123456'
+        password = '******'
         database = 'bookdata'
 
         ## Create/Connect to database
