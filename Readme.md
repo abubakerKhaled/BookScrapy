@@ -1,682 +1,356 @@
-## Scrapy Feed Exporters
+# Fake Headers & User Agents | ScrapeOps
 
-Scrapy has a easy to use way to save the data to several different formats, [**Feed Exporters**](https://docs.scrapy.org/en/latest/topics/feed-exports.html).
+## Getting Blocked Whilst Web Scraping
 
-Out of the box Scrapy's **FeedExporter** functionality provides the following formats to save/export the scraped data:
+For this course we're scraping [BooksToScrape](https://books.toscrape.com/) a website intended to help you to learn web scraping, so it doesn't block you no matter how obvious it is you are a scraper.
 
-- JSON file format
-- CVS file format
-- XML file format
-- Pythons pickle format
+However, what you will quickly find out when you start scraping protected websites like Amazon, Google, Zillow, etc, is that building and running your scrapers is the easy part.
 
-The files which are generated can then be saved to the following places using a Feed Exporter:
+The true difficulty of web scraping is in being able to reliably retrieve HTML responses from the pages you want to scrape.
 
-- The machine Scrapy is running on (obviously)
-- To a remote machine using FTP (file transfer protocall)
-- To Amazon S3 Storage
-- To Google Cloud Storage
-- Standard output
+This is because most websites want to limit or completely stop your ability to scrape data from their websites.
 
+Websites use a number of methods to detect and ban scrapers from extracting their data:
 
-## Saving Data To CSVs
+- **IP Address**
+- **TLS** or **TCP/IP fingerprint**
+- **HTTP headers** (values, order and cases used)
+- **Browser fingerprints**
+- **Cookies/Sessions**
 
-There are two approaches to saving data to CSVs with Scrapy:
+For more information on the above, then check out our [how to scrape without getting blocked guide here](https://scrapeops.io/web-scraping-playbook/web-scraping-without-getting-blocked/).
 
-- Via command line arguments
-- Via FeedExporters in `settings.py` file
+However, the most important and easiest to mitigate ways of bypassing a websites anti-bot protection systems is to **fake your headers and user-agents**, and use **rotating proxy pools**.
 
-### Saving Data To CSVs Via Command Line
+We will look at how you can integrate and rotate proxies with Scrapy.
 
-The first and simplest way to create a CSV file of the data you have scraped, is to simply define a output path when starting your spider in the command line.
+However, for this we will focus why and how you should use fake headers and user-agents when scraping.
 
-To save to a CSV file add the flag `-o` to the `scrapy crawl` command along with the file path you want to save the file to.
+## What Are User-Agents & Why Do We Need To Manage Them?
 
-You can set a relative path like below:
+User Agents are strings that let the website you are scraping identify the application, operating system (OSX/Windows/Linux), browser (Chrome/Firefox/Internet Explorer), etc. of the user sending a request to their website. They are sent to the server as part of the request headers.
 
-```bash
-scrapy crawl bookspider -o bookspider_data.csv
-
-```
-
-Or you can also set a absolute path like this:
+Here is an example User agent sent when you visit a website with a Chrome browser:
 
 ```bash
-scrapy crawl bookspider -o file:///path/to/my/project/bookspider_data.csv
+user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.82 Safari/537.36
 
 ```
 
-You have two options when using this command, use are small `-o` or use a capital `-O`.
+When scraping a website, you also need to set user-agents on every request as otherwise the website may block your requests because it knows you aren't a real user.
 
-| Flag | Description |
-| ---  | --- |
-| -o   | Appends new data to an existing file. |
-| -O   | Overwrites any existing file with the same name with the current data. |
-
-Telling Scrapy to save the data to a CSV via the command line is okay, but can be a little messy. The other option is setting it in your code, which Scrapy makes very easy.
-
-
-### Saving Data To CSVs Via Feeds
-
-Often the cleanest option is to tell Scrapy to save the data to a CSV via the [FEEDS](https://docs.scrapy.org/en/stable/topics/feed-exports.html#feeds) setting.
-
-We can configure it in our `settings.py` file by passing it a dictionary with the path/name of the file and the file format:
-
-```python
-# settings.py
-FEEDS = {
-'data.csv': {'format': 'csv'}
-}
-
-```
-
-You can also configure this in each individual spider by setting a `custom_setting` in your spider.
-
-```python
-# bookspider.py
-import scrapy
-from proxy_waterfall.items import BookItem
-class BookSpider(scrapy.Spider):
-	name = 'bookspider'
-	start_urls = ["http://books.toscrape.com"]
-	custom_settings = {
-        'FEEDS': { 'data.csv': { 'format': 'csv',}}
-    }
-
-def parse(self, response):
-    for article in response.css('article.product_pod'):
-                book_item = BookItem(
-                    url = article.css("h3 > a::attr(href)").get(),
-                    title = article.css("h3 > a::attr(title)").extract_first(),
-                    price = article.css(".price_color::text").extract_first(),
-    )
-    yield book_item
-
-```
-
-The default overwriting behaviour of the **FEEDS** functionality is dependant on where the data is going to be stored. However, you can set it to overwite existing data or not by adding a `overwrite` key to the `FEEDS` dictionary with either **True** or **False**.
-
-```python
-# settings.py
-FEEDS = {
-'data.csv': {'format': 'csv', 'overwrite': True}
-}
-
-```
-
-When saving locally, by default `overwrite` is set to **False**. The full set of defaults can be found in the [Feeds docs](https://docs.scrapy.org/en/stable/topics/feed-exports.html#feeds).
-
-Setting a static filepath is okay for development or very small projects, however, when in production you will likely don't want all your data being saved into one big file. So to solve this Scrapy allows you create dynamic file paths/names using spider variables.
-
-For example, here tell create a CSV for the data in the data folder, followed by the subfolder with the spiders name, and a file name that includes the spider name and date it was scraped.
-
-```python
-# settings.py
-FEEDS = {
-'data/%(name)s/%(name)s_%(time)s.csv': {
-'format': 'csv',
-}
-}
-
-```
-
-The generated path would look something like this.
+In the case of Scrapy. When you use Scrapy with the default settings, the user-agent your spider sends is the following by default:
 
 ```bash
-"data/bookspider/bookspider_2022-05-18T07-47-03.csv"
+Scrapy/VERSION (+https://scrapy.org)
 
 ```
 
-There are a lot more customization options when saving CSVs which we cover in our [Saving Data To CSVs Guide](https://scrapeops.io/python-scrapy-playbook/scrapy-save-csv-files/)
+This user agent will clearly identify your requests as coming from a web scraper, so the website can easily block you from scraping the site.
 
+That is why we need to manage the user-agents Scrapy sends with our requests.
 
-## Saving Data To JSON Files
+## How To Set A Fake User-Agent In Scrapy
 
-Like saving data to CSV files, there are two approaches to saving data to JSON files with Scrapy:
+There are a couple of ways to set new user agent for your spiders to use.
 
-- Via command line arguments
-- Via Feeds in `settings.py` file
+### 1. Set New Default User-Agent
 
-### Saving Data To JSON Files Via Command Line
+The easiest way to change the default Scrapy user-agent is to set a default user-agent in your `settings.py` file.
 
-The first and simplest way to create a JSON file of the data you have scraped, is to simply define a output path when starting your spider in the command line.
-
-To save to a JSON file add the flag `-o` to the `scrapy crawl` command along with the file path you want to save the file to.
-
-You can set a relative path like below:
-
-```
-scrapy crawl bookspider -o bookspider_data.json
-
-```
-
-To save in JSON lines format, simply change the file format:
-
-```bash
-scrapy crawl bookspider -o bookspider_data.jsonl
-
-```
-
-Or you can also set a absolute path like this:
-
-```bash
-scrapy crawl bookspider -o file:///path/to/my/project/bookspider_data.jsonl
-
-```
-
-You have two options when using this command, use are small `-o` or use a capital `-O`.
-
-| Flag | Description |
-| ---  | --- |
-| -o   | Appends new data to an existing file. |
-| -O   | Overwrites any existing file with the same name with the current data. |
-
-Saving To JSON vs JSON Lines Files
-
-When saving in JSON format, we have two options: **JSON** and **JSON lines**.
-
-Storing data in JSON format is okay for small amounts of data but it doesn’t scale well for large amounts of data, as incremental (aka. stream-mode) parsing is not well supported (if at all) and can result in the entire dataset being stored into memory creating the potential for a memory leak.
-
-JSON data is held memory in an array and new data is appended to it:
+Simply uncomment the `USER_AGENT` value in the `settings.py` file and add a new user agent:
 
 ```python
-[
-    {"name": "Color TV", "price": "1200"},
-    {"name": "DVD player", "price": "200"}
+## settings.py
+USER_AGENT = 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
+
+```
+
+### 2. Add A User-Agent To Every Request
+
+Another option is to set a user-agent on every request your spider makes by defining a user-agent in the headers of your request:
+
+```python
+## myspider.py
+def start_requests(self):
+    for url in self.start_urls:
+    return Request(url=url, callback=self.parse,
+                       headers={"User-Agent": "Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"})
+
+```
+
+Both of these options work, however, you will have the same user-agent for every single request which the target website might pick up on and block you for. That is why we need to have a list of user-agents and select a random one for every request.
+
+## How To Rotate User Agents
+
+Rotating through user-agents is also pretty straightforward, and we need a list of user-agents in our spider and use a random one with every request we make using a similar approach to [option #2 above](https://scrapeops.io/python-scrapy-playbook/freecodecamp-beginner-course/freecodecamp-scrapy-beginners-course-part-8-fake-headers-user-agents/#2-add-a-user-agent-to-every-request).
+
+```python
+## myspider.py
+import random
+user_agent_list = [
+'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.82 Safari/537.36',
+'Mozilla/5.0 (iPhone; CPU iPhone OS 14_4_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1',
+'Mozilla/4.0 (compatible; MSIE 9.0; Windows NT 6.1)',
+'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.141 Safari/537.36 Edg/87.0.664.75',
+'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36 Edge/18.18363',
 ]
+def start_requests(self):
+    for url in self.start_urls:
+    return Request(url=url, callback=self.parse,
+                       headers={"User-Agent": user_agent_list[random.randint(0, len(user_agent_list)-1)]})
 
 ```
 
-As a result, it is advised to use JSON lines format if you want to save data in JSON.
+This works but it has 2 drawbacks:
 
-```python
-{"name": "Color TV", "price": "1200"}
-{"name": "DVD player", "price": "200"}
+1. We need to manage a list of user-agents ourselves.
+2. We would need to implement this into every spider, which isn't ideal.
 
-```
-
-Using JSON lines allows new data to be incrementally added to a file and can be split into numerous chunks.
-
-### Saving Data To JSON Files Via Feeds
-
-Telling Scrapy to save the data to a JSON via the command line is okay, but can be a little messy. The other option is setting it in your code, which Scrapy makes very easy.
-
-Often the better option is to tell Scrapy to save the data to a JSON via the [FEEDS](https://docs.scrapy.org/en/stable/topics/feed-exports.html#feeds) setting.
-
-We can configure it in our `settings.py` file by passing it a dictionary with the path/name of the file and the file format.
-
-For JSON format:
-
-```python
-# settings.py
-FEEDS = {
-'data.json': {'format': 'json'}
-}
-
-```
-
-For JSON lines format:
-
-```python
-# settings.py
-FEEDS = {
-'data.jsonl': {'format': 'jsonlines'}
-}
-
-```
-
-You can also configure this in each individual spider by setting a `custom_setting` in your spider.
-
-```python
-# bookspider.py
-import scrapy
-from proxy_waterfall.items import BookItem
-class BookSpider(scrapy.Spider):
-	name = 'bookspider'
-	start_urls = ["http://books.toscrape.com"]
-	custom_settings = {
-        'FEEDS': { 'data.jsonl': { 'format': 'jsonlines',}}
-    }
-
-def parse(self, response):
-    for article in response.css('article.product_pod'):
-                book_item = BookItem(
-                    url = article.css("h3 > a::attr(href)").get(),
-                    title = article.css("h3 > a::attr(title)").extract_first(),
-                    price = article.css(".price_color::text").extract_first(),
-    )
-    yield book_item
-
-```
-
-The default overwriting behaviour of the **FEEDS** functionality is dependant on where the data is going to be stored. However, you can set it to overwite existing data or not by adding a `overwrite` key to the `FEEDS` dictionary with either **True** or **False**.
-
-```python
-# settings.py
-FEEDS = {
-    'data.jsonl': {'format': 'jsonlines', 'overwrite': True}
-}
-
-```
-
-When saving locally, by default `overwrite` is set to **False**. The full set of defaults can be found in the [Feeds docs](https://docs.scrapy.org/en/stable/topics/feed-exports.html#feeds).
+A better approach would be to use a Scrapy middleware to manage our user-agents for us.
 
 
-## Saving Data to a MySQL Database
+## How To Manage Thousands of Fake User Agents
 
-When doing larger scale scraping it is normally better to store the scraped data into a database like MySQL or Postgres over saving to a CSV or JSON file.
+The best approach to managing user-agents in Scrapy is to build or use a custom Scrapy middleware that manages the user agents for you.
 
-Next, we will walk through how to save data to a MySQL database using Item Pipelines.
+You could build a custom middleware yourself if your project has specific requirements like you need to use specific user-agents with specific sites. However, in most cases using a off-the-shelf user-agent middleware is enough.
 
-### Step 1: Get MySQL Database
+Developers have realised of user-agent middlewares for Scrapy, however, for this guide we will use [ScrapeOps Fake User-Agent API](https://scrapeops.io/docs/fake-user-agent-headers-api/fake-user-agents/) as it is one of the best available.
 
-To get started we first need to setup a MySQL database.
+### ScrapeOps Fake User-Agent API
 
-Either you can set one up on your local machine by using [one of the appropriate installer for your operating system](https://dev.mysql.com/doc/mysql-installation-excerpt/5.7/en/).
+The [ScrapeOps Fake User-Agent API](https://scrapeops.io/docs/fake-user-agent-headers-api/fake-user-agents/) is a **free user-agent API**, that returns a list of fake user-agents that you can use in your web scrapers to bypass some simple anti-bot defenses.
 
-Or you could get a hosted version with cloud provider like [DigitalOcean](https://m.do.co/c/2656441c8345).
+To use the **ScrapeOps Fake User-Agents API** you just need to send a request to the API endpoint to retrieve a list of user-agents.
 
-Once setup you should have access to the database connection details of your database:
-
-```python
-host="localhost",
-database="my_database",
-user="root",
-password="123456"
-
-```
-
-### Step 2: Install MySQL Python Library
-
-To interact with our database we will need a library to handle the interaction. For this will install `mysql` and `mysql-connector-python`.
+You first need an **API key** which you can get by signing up for a [free account here](https://scrapeops.io/app/register/headers).
 
 ```bash
-pip install mysql mysql-connector-python
+http://headers.scrapeops.io/v1/user-agents?api_key=YOUR_API_KEY
 
 ```
 
-We will use `mysql` to interact with our MySQL database.
-
-### Step 3: Setup Our Pipeline
-
-The next step is we need to open our `pipelines.py` file and set up our pipeline.
-
-First, we're going to `import mysql` into our `pipelines.py` file, and create an `__init__` method that we will use to create our database and table.
+Example response from the API:
 
 ```python
-# pipelines.py
-import mysql.connector
-class SaveToMySQLPipeline:
-def __init__(self):
-pass
-def process_item(self, item, spider):
-return item
-
-```
-
-Inside the `__init__` method, we will configure the pipeline to do the following everytime the pipeline gets activated by a spider:
-
-1. Try to connect to our database `books`, but if it doesn't exist create the database.
-2. Create a cursor which we will use to execute SQL commands in the database.
-3. Create a new table `books` with the columns for each field in our Item if one doesn't already exist in the database.
-
-```python
-# pipelines.py
-import mysql.connector
-class SaveToMySQLPipeline:
-def __init__(self):
-        self.conn = mysql.connector.connect(
-            host = 'localhost',
-            user = 'root',
-            password = '******',
-            database = 'books'
-)
-## Create cursor, used to execute commands
-        self.cur = self.conn.cursor()
-
-## Create books table if none exists
-        self.cur.execute("""
-        CREATE TABLE IF NOT EXISTS books(
-            id int NOT NULL auto_increment,
-            url VARCHAR(255),
-            title text,
-            upc VARCHAR(255),
-            product_type VARCHAR(255),
-            price_excl_tax DECIMAL,
-            price_incl_tax DECIMAL,
-            tax DECIMAL,
-            price DECIMAL,
-            availability INTEGER,
-            num_reviews INTEGER,
-            stars INTEGER,
-            category VARCHAR(255),
-            description text,
-            PRIMARY KEY (id)
-        )
-        """)
-def process_item(self, item, spider):
-return item
-
-```
-
-### Step 4: Save Scraped Items Into Database
-
-Next, we're going to use the `process_item` event inside in our Scrapy pipeline to store the data we scrape into our MySQL database.
-
-The `process_item` will be activated everytime, a item is scraped by our spider so we need to configure the `process_item` method to insert the items data in the database.
-
-We will also the `close_spider` method, which will be called when the Spider is shutting down, to close our connections to the cursor and database to avoid leaving the connection open.
-
-```python
-# pipelines.py
-import mysql.connector
-class SaveToMySQLPipeline:
-def __init__(self):
-        self.conn = mysql.connector.connect(
-            host = 'localhost',
-            user = 'root',
-            password = '******',
-            database = 'books'
-)
-## Create cursor, used to execute commands
-        self.cur = self.conn.cursor()
-
-## Create books table if none exists
-        self.cur.execute("""
-        CREATE TABLE IF NOT EXISTS books(
-            id int NOT NULL auto_increment,
-            url VARCHAR(255),
-            title text,
-            upc VARCHAR(255),
-            product_type VARCHAR(255),
-            price_excl_tax DECIMAL,
-            price_incl_tax DECIMAL,
-            tax DECIMAL,
-            price DECIMAL,
-            availability INTEGER,
-            num_reviews INTEGER,
-            stars INTEGER,
-            category VARCHAR(255),
-            description text,
-            PRIMARY KEY (id)
-        )
-        """)
-def process_item(self, item, spider):
-## Define insert statement
-        self.cur.execute(""" insert into books (
-            url,
-            title,
-            upc,
-            product_type,
-            price_excl_tax,
-            price_incl_tax,
-            tax,
-            price,
-            availability,
-            num_reviews,
-            stars,
-            category,
-            description
-            ) values (
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s
-                )""", (
-            item["url"],
-            item["title"],
-            item["upc"],
-            item["product_type"],
-            item["price_excl_tax"],
-            item["price_incl_tax"],
-            item["tax"],
-            item["price"],
-            item["availability"],
-            item["num_reviews"],
-            item["stars"],
-            item["category"],
-str(item["description"])
-))
-## Execute insert of data into database
-        self.conn.commit()
-
-def close_spider(self, spider):
-## Close cursor & connection to database
-        self.cur.close()
-        self.conn.close()
-
-```
-
-### Step 5: Activate Our Item Pipeline
-
-Finally, to activate our Item Pipeline we need to include it in our `settings.py` file:
-
-```python
-# settings.py
-ITEM_PIPELINES = {
-'bookscraper.pipelines.SaveToMySQLPipeline': 300,
+{
+  "result": [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.5 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Windows; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.114 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/603.3.8 (KHTML, like Gecko) Version/10.1.2 Safari/603.3.8",
+    "Mozilla/5.0 (Windows NT 10.0; Windows; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.114 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Windows; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.114 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36"
+  ]
 }
 
 ```
 
-Now, when we run our `bookspider` it will save the scraped data into our `books` MySQL database.`
-
-This is a example of a simple MySQL integration, if you would like to learn more about saving data into MySQL databases with Scrapy then [checkout our Scrapy MySQL Guide here](https://scrapeops.io/python-scrapy-playbook/scrapy-save-data-mysql/).
-
-## Saving Data to a Postgres Database
-
-Another common database developers like to save their scraped data into is Postgres databases which are ideally suited to large amounts of scraped data.
-
-### Step 1: Get Postgres Database
-
-To get started we first need to setup a Postgres database.
-
-Either you can set one up on your local machine by using [one of the following downloads](https://www.postgresql.org/download/).
-
-Or you could get a hosted version with cloud provider like [DigitalOcean](https://m.do.co/c/2656441c8345).
-
-Once setup you should have access to the database connection details of your database:
+The best way to integrate the **Fake User-Agent API** is to create a Downloader middleware and have a fake user-agent be added to every request. Here is an example middleware you can use:
 
 ```python
-host="localhost",
-database="my_database",
-user="root",
-password="123456"
+## middlewares.py
+from urllib.parse import urlencode
+from random import randint
+import requests
+class ScrapeOpsFakeUserAgentMiddleware:
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(crawler.settings)
+    def __init__(self, settings):
+        self.scrapeops_api_key = settings.get('SCRAPEOPS_API_KEY')
+        self.scrapeops_endpoint = settings.get('SCRAPEOPS_FAKE_USER_AGENT_ENDPOINT', 'http://headers.scrapeops.io/v1/user-agents?')
+        self.scrapeops_fake_user_agents_active = settings.get('SCRAPEOPS_FAKE_USER_AGENT_ENABLED', False)
+        self.scrapeops_num_results = settings.get('SCRAPEOPS_NUM_RESULTS')
+        self.headers_list = []
+        self._get_user_agents_list()
+        self._scrapeops_fake_user_agents_enabled()
+    def _get_user_agents_list(self):
+        payload = {'api_key': self.scrapeops_api_key}
+        if self.scrapeops_num_results is not None:
+            payload['num_results'] = self.scrapeops_num_results
+        response = requests.get(self.scrapeops_endpoint, params=urlencode(payload))
+        json_response = response.json()
+        self.user_agents_list = json_response.get('result', [])
+    def _get_random_user_agent(self):
+        random_index = randint(0, len(self.user_agents_list) - 1)
+        return self.user_agents_list[random_index]
+    def _scrapeops_fake_user_agents_enabled(self):
+        if self.scrapeops_api_key is None or self.scrapeops_api_key == '' or self.scrapeops_fake_user_agents_active == False:
+            self.scrapeops_fake_user_agents_active = False
+        else:
+            self.scrapeops_fake_user_agents_active = True
+
+def process_request(self, request, spider):
+        random_user_agent = self._get_random_user_agent()
+        request.headers['User-Agent'] = random_user_agent
 
 ```
 
-### Step 2: Install psycopg2
+**Note:** This middleware example requires the installation of **Python Requests** via `pip install requests`.
 
-To interact with our database we will need a library to handle the interaction. For this will install `psycopg2`.
+And then enable it in our projects `settings.py` file.
+
+```python
+## settings.py
+SCRAPEOPS_API_KEY = 'YOUR_API_KEY'
+SCRAPEOPS_FAKE_USER_AGENT_ENABLED = True
+DOWNLOADER_MIDDLEWARES = {
+'bookscraper.middlewares.ScrapeOpsFakeUserAgentMiddleware': 400,
+}
+
+```
+
+When activated, the **ScrapeOpsFakeUserAgentMiddleware** will download a list of the most common user-agents from the API and use a random one with every request, so you don't need to create your own list.
+
+To see all the configuration options, then check out the [docs here](https://scrapeops.io/docs/fake-user-agent-headers-api/fake-user-agents/).
+
+
+## Fake Browser Headers vs Fake User-Agents
+
+Just adding fake user-agents to your requests will help you scrape websites with simple anti-bot protection systems, however, for websites with proper anti-bot protection just setting users-agents isn't enough.
+
+To convince these websites (Amazon, Google, etc.) you aren't a scraper you must be using fake browser headers to mimic mimic the browser fingerprints of real users.
+
+For example, here is an example of the headers a **Chrome browser on a MacOS machine** would send to a website:
 
 ```bash
-pip install psycopg2
+Host: 127.0.0.1:65432
+Connection: keep-alive
+Cache-Control: max-age=0
+sec-ch-ua: " Not A;Brand";v="99", "Chromium";v="99", "Google Chrome";v="99"
+sec-ch-ua-mobile: ?0
+sec-ch-ua-platform: "macOS"
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.83 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
+Sec-Fetch-Site: none
+Sec-Fetch-Mode: navigate
+Sec-Fetch-User: ?1
+Sec-Fetch-Dest: document
+Accept-Encoding: gzip, deflate, br
+Accept-Language: en-GB,en-US;q=0.9,en;q=0.8
 
 ```
 
-We will use `psycopg2` to interact with our Postgres database.
+These fake browser headers include fake user-agents but also a lot of other headers that a real browser would typically send to the website.
 
-### Step 3: Setup Our Pipeline
+As a result, if your requests don't contain the correct browser headers it is very easy for anti-bot protection systems to determine that the requests are not coming from a real users browser. So they block the requests.
 
-The next step is we need to open our `pipelines.py` file and set up our pipeline.
+Optimizing fake browser headers is a whole topic in of itself, so if you would like to learn more about it then [check out our guide to fake browser headers](https://scrapeops.io/web-scraping-playbook/web-scraping-guide-header-user-agents/).
 
-First, we're going to `import psycopg2` into our `pipelines.py` file, and create an `__init__` method that we will use to create our database and table.
+## Using Fake Browser Headers With Scrapy
+
+You can add fake browser headers just as you would add fake user-agents as user-agents are just one type of header:
 
 ```python
-# pipelines.py
-import psycopg2
-class SaveToPostgresPipeline:
-def __init__(self):
-pass
-def process_item(self, item, spider):
-return item
+## myspider.py
+def start_requests(self):
+    fake_browser_header = {
+"upgrade-insecure-requests": "1",
+"user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36",
+"accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+"sec-ch-ua": "\".Not/A)Brand\";v=\"99\", \"Google Chrome\";v=\"103\", \"Chromium\";v=\"103\"",
+"sec-ch-ua-mobile": "?0",
+"sec-ch-ua-platform": "\"Linux\"",
+"sec-fetch-site": "none",
+"sec-fetch-mod": "",
+"sec-fetch-user": "?1",
+"accept-encoding": "gzip, deflate, br",
+"accept-language": "fr-CH,fr;q=0.9,en-US;q=0.8,en;q=0.7"
+}
+for url in self.start_urls:
+return Request(url=url, callback=self.parse, headers=fake_browser_header)
 
 ```
 
-Inside the `__init__` method, we will configure the pipeline to do the following everytime the pipeline gets activated by a spider:
+### ScrapeOps Fake Browser Header API
 
-1. Try to connect to our database `books`, but if it doesn't exist create the database.
-2. Create a cursor which we will use to execute SQL commands in the database.
-3. Create a new table `books` with columns for every field in our Item, if one doesn't already exist in the database.
+The [ScrapeOps Fake Browser Header API](https://scrapeops.io/docs/fake-user-agent-headers-api/fake-browser-headers/) is a **free fake browser header API**, that returns a list of fake browser headers that you can use in your web scrapers to bypass more complex anti-bot defenses.
 
-```python
-# pipelines.py
-import psycopg2
-class SaveToPostgresPipeline:
-    def __init__(self):
-        ## Connection Details
-        hostname = 'localhost'
-        username = 'postgres'
-        password = '*******' # your password
-        database = 'books'
-        ## Create/Connect to database
-        self.connection = psycopg2.connect(host=hostname, user=username, password=password, dbname=database)
+To use the **ScrapeOps Fake Browser Headers API** you just need to send a request to the API endpoint to retrieve a list of user-agents.
 
-        ## Create cursor, used to execute commands
-        self.cur = self.connection.cursor()
+You first need an **API key** which you can get by signing up for a [free account here](https://scrapeops.io/app/register/headers).
 
-        ## Create books table if none exists
-        self.cur.execute("""
-        CREATE TABLE IF NOT EXISTS books(
-            id serial PRIMARY KEY,
-            url VARCHAR(255),
-            title text,
-            upc VARCHAR(255),
-            product_type VARCHAR(255),
-            price_excl_tax DECIMAL,
-            price_incl_tax DECIMAL,
-            tax DECIMAL,
-            price DECIMAL,
-            availability INTEGER,
-            num_reviews INTEGER,
-            stars INTEGER,
-            category VARCHAR(255),
-            description text
-        )
-        """)
-    def process_item(self, item, spider):
-    return item
+```
+http://headers.scrapeops.io/v1/browser-headers?api_key=YOUR_API_KEY
 
 ```
 
-### Step 4: Save Scraped Items Into Postgres Database
-
-Next, we're going to use the `process_item` event inside in our Scrapy pipeline to store the data we scrape into our Postgres database.
-
-The `process_item` will be activated everytime, a item is scraped by our spider so we need to configure the `process_item` method to insert the items data in the database.
-
-We will also the `close_spider` method, which will be called when the Spider is shutting down, to close our connections to the cursor and database to avoid leaving the connection open.
+The best way to integrate the **Fake Browser Headers API** is to create a Downloader middleware and have a fake browser headers be added to every request. Here is an example middleware you can use:
 
 ```python
-# pipelines.py
-import psycopg2
-class SaveToPostgresPipeline:
-def __init__(self):
-## Connection Details
-        hostname = 'localhost'
-        username = 'postgres'
-        password = '******' # your password
-        database = 'books'
-## Create/Connect to database
-        self.connection = psycopg2.connect(host=hostname, user=username, password=password, dbname=database)
+## middlewares.py
+from urllib.parse import urlencode
+from random import randint
+import requests
+class ScrapeOpsFakeBrowserHeaderAgentMiddleware:
+    @classmethod
+    def from_crawler(cls, crawler):
+        return cls(crawler.settings)
+    def __init__(self, settings):
+        self.scrapeops_api_key = settings.get('SCRAPEOPS_API_KEY')
+        self.scrapeops_endpoint = settings.get('SCRAPEOPS_FAKE_BROWSER_HEADER_ENDPOINT', 'http://headers.scrapeops.io/v1/browser-headers?')
+        self.scrapeops_fake_browser_headers_active = settings.get('SCRAPEOPS_FAKE_BROWSER_HEADER_ENABLED', False)
+        self.scrapeops_num_results = settings.get('SCRAPEOPS_NUM_RESULTS')
+        self.headers_list = []
+        self._get_headers_list()
+        self._scrapeops_fake_browser_headers_enabled()
 
-## Create cursor, used to execute commands
-        self.cur = self.connection.cursor()
+    def _get_headers_list(self):
+        payload = {'api_key': self.scrapeops_api_key}
+        if self.scrapeops_num_results is not None:
+            payload['num_results'] = self.scrapeops_num_results
+        response = requests.get(self.scrapeops_endpoint, params=urlencode(payload))
+        json_response = response.json()
+        self.headers_list = json_response.get('result', [])
 
-## Create books table if none exists
-        self.cur.execute("""
-        CREATE TABLE IF NOT EXISTS books(
-            id serial PRIMARY KEY,
-            url VARCHAR(255),
-            title text,
-            upc VARCHAR(255),
-            product_type VARCHAR(255),
-            price_excl_tax DECIMAL,
-            price_incl_tax DECIMAL,
-            tax DECIMAL,
-            price DECIMAL,
-            availability INTEGER,
-            num_reviews INTEGER,
-            stars INTEGER,
-            category VARCHAR(255),
-            description text
-        )
-        """)
-def process_item(self, item, spider):
-## Define insert statement
-        self.cur.execute(""" insert into books (
-            url,
-            title,
-            upc,
-            product_type,
-            price_excl_tax,
-            price_incl_tax,
-            tax,
-            price,
-            availability,
-            num_reviews,
-            stars,
-            category,
-            description
-            ) values (
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s
-                )""", (
-            item["url"],
-            item["title"],
-            item["upc"],
-            item["product_type"],
-            item["price_excl_tax"],
-            item["price_incl_tax"],
-            item["tax"],
-            item["price"],
-            item["availability"],
-            item["num_reviews"],
-            item["stars"],
-            item["category"],
-str(item["description"])
-))
-## Execute insert of data into database
-        self.connection.commit()
-return item
-def close_spider(self, spider):
-## Close cursor & connection to database
-        self.cur.close()
-        self.connection.close()
+
+    def _get_random_browser_header(self):
+        random_index = randint(0, len(self.headers_list) - 1)
+        return self.headers_list[random_index]
+
+
+    def _scrapeops_fake_browser_headers_enabled(self):
+        if self.scrapeops_api_key is None or self.scrapeops_api_key == '' or self.scrapeops_fake_browser_headers_active == False:
+            self.scrapeops_fake_browser_headers_active = False
+        else:
+            self.scrapeops_fake_browser_headers_active = True
+
+    def process_request(self, request, spider):
+        random_browser_header = self._get_random_browser_header()
+        request.headers = random_browser_header
 
 ```
 
-### 5. Activate Our Item Pipeline
+**Note:** This middleware example requires the installation of **Python Requests** via `pip install requests`.
 
-Finally, to activate our Item Pipeline we need to include it in our `settings.py` file:
+And then enable it in our projects `settings.py` file.
 
 ```python
-# settings.py
-ITEM_PIPELINES = {
-'bookscraper.pipelines.SaveToPostgresPipeline': 300,
+## settings.py
+SCRAPEOPS_API_KEY = 'YOUR_API_KEY'
+SCRAPEOPS_FAKE_BROWSER_HEADER_ENABLED = True
+DOWNLOADER_MIDDLEWARES = {
+    'bookscraper.middlewares.ScrapeOpsFakeBrowserHeaderAgentMiddleware': 400,
 }
 
 ```
 
-Now, when we run our **books** spider the **SaveToPostgresPipeline** will store all the scraped items in the database.
+When activated, the **ScrapeOpsFakeBrowserHeaderAgentMiddleware** will download a list of the most common browser headers from the API and use a random one with every request, so you don't need to create your own list.
 
-This is an example of a simple Postgres integration, if you would like to learn more about saving data into Postgres databases with Scrapy then [checkout our Scrapy Postgres Guide here](https://scrapeops.io/python-scrapy-playbook/scrapy-save-data-postgres/).
+To see all the configuration options, then check out the [docs here](https://scrapeops.io/docs/fake-user-agent-headers-api/fake-browser-headers/).
+
+
+## Next Steps
+
+In this part, we looked at why you need to manage your scrapers user-agents and headers when scraping websites. Along with how to manage them in Scrapy.
+
+Optimizing your scrapers headers will help you bypass some anti-protection systems when scraping at smaller scales. However, when scraping at scale your requests are highly likely to get detected and blocked by websites as you will be using the same IP address for every request.
+
+So in [Part 9](https://scrapeops.io/python-scrapy-playbook/freecodecamp-beginner-course/freecodecamp-scrapy-beginners-course-part-9-rotating-proxies/), we will look at how you can use rotating proxy pools to hide your IP address and scrape at scale without getting blocked.

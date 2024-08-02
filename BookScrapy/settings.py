@@ -50,9 +50,20 @@ ROBOTSTXT_OBEY = True
 
 # Enable or disable downloader middlewares
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
-# DOWNLOADER_MIDDLEWARES = {
-#    "BookScrapy.middlewares.BookscrapyDownloaderMiddleware": 543,
-# }
+
+# Use environment variable for API key
+SCRAPEOPS_API_KEY = "SET YOUR API KEY FROM SCRAPEOPS!"
+SCRAPEOPS_NUM_RESULTS = 50
+SCRAPEOPS_FAKE_USER_AGENT_ENDPOINT = "https://headers.scrapeops.io/v1/user-agents"
+
+SCRAPEOPS_FAKE_USER_AGENT_ENABLED = True
+SCRAPEOPS_FAKE_BROWSER_HEADER_ENABLED = True
+
+DOWNLOADER_MIDDLEWARES = {
+    # "BookScrapy.middlewares.BookscrapyDownloaderMiddleware": 543,
+    # "BookScrapy.middlewares.FakeUserAgentMiddleware": 400,
+    "BookScrapy.middlewares.FakeBrowserHeaderAgentMiddleware": 400,
+}
 
 # Enable or disable extensions
 # See https://docs.scrapy.org/en/latest/topics/extensions.html
@@ -64,17 +75,17 @@ ROBOTSTXT_OBEY = True
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
 ITEM_PIPELINES = {
     "BookScrapy.pipelines.BookscrapyPipeline": 300,
-    "BookScrapy.pipelines.SaveToPostgresPipeline": 400,
+   #  "BookScrapy.pipelines.SaveToPostgresPipeline": 400,
 }
 
 
 # Svaving Data to CSVs & JSONs Via FEEDS
-FEEDS = {
-    "bookdata.csv": {"format": "csv"},
-    "bookdata.json": {"format": "json"},
-    "data/%(name)s/%(name)s_%(time)s.csv": {"format": "csv"},
-    "data/%(name)s/%(name)s_%(time)s.json": {"format": "json"},
-}
+# FEEDS = {
+#     "bookdata.csv": {"format": "csv"},
+#     "bookdata.json": {"format": "json"},
+#     "data/%(name)s/%(name)s_%(time)s.csv": {"format": "csv"},
+#     "data/%(name)s/%(name)s_%(time)s.json": {"format": "json"},
+# }
 
 
 # Enable and configure the AutoThrottle extension (disabled by default)
