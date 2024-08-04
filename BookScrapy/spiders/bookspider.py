@@ -3,7 +3,7 @@ from BookScrapy.items import BookscrapyItem
 
 class BookspiderSpider(scrapy.Spider):
     name = "bookspider"
-    allowed_domains = ["books.toscrape.com"]
+    allowed_domains = ["books.toscrape.com", "proxy.scrapeops.io"]
     start_urls = ["https://books.toscrape.com/"]
 
     def parse(self, response):

@@ -52,17 +52,23 @@ ROBOTSTXT_OBEY = True
 # See https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 
 # Use environment variable for API key
-SCRAPEOPS_API_KEY = "SET YOUR API KEY FROM SCRAPEOPS!"
+SCRAPEOPS_API_KEY = "4f57842a-e6c3-4688-8931-dbc3f8a5ddeb"
 SCRAPEOPS_NUM_RESULTS = 50
 SCRAPEOPS_FAKE_USER_AGENT_ENDPOINT = "https://headers.scrapeops.io/v1/user-agents"
 
 SCRAPEOPS_FAKE_USER_AGENT_ENABLED = True
 SCRAPEOPS_FAKE_BROWSER_HEADER_ENABLED = True
 
+
+SCRAPEOPS_PROXY_ENABLED = True
+SCRAPEOPS_PROXY_SETTINGS = {"country": "us"}
+
 DOWNLOADER_MIDDLEWARES = {
     # "BookScrapy.middlewares.BookscrapyDownloaderMiddleware": 543,
     # "BookScrapy.middlewares.FakeUserAgentMiddleware": 400,
-    "BookScrapy.middlewares.FakeBrowserHeaderAgentMiddleware": 400,
+    # "BookScrapy.middlewares.FakeBrowserHeaderAgentMiddleware": 400,
+    "scrapeops_scrapy_proxy_sdk.scrapeops_scrapy_proxy_sdk.ScrapeOpsScrapyProxySdk": 725,
+    "BookScrapy.middlewares.ProxyMiddleware": 725,
 }
 
 # Enable or disable extensions

@@ -1,356 +1,443 @@
-# Fake Headers & User Agents | ScrapeOps
+# Rotating Proxies & Proxy APIs
 
-## Getting Blocked Whilst Web Scraping
+## What Are Proxies & Why Do We Need Them?
 
-For this course we're scraping [BooksToScrape](https://books.toscrape.com/) a website intended to help you to learn web scraping, so it doesn't block you no matter how obvious it is you are a scraper.
+As we saw in [Part 8](https://scrapeops.io/python-scrapy-playbook/freecodecamp-beginner-course/freecodecamp-scrapy-beginners-course-part-8-fake-headers-user-agents/), most websites are trying to limit or completely block scrapers from accessing their websites data.
 
-However, what you will quickly find out when you start scraping protected websites like Amazon, Google, Zillow, etc, is that building and running your scrapers is the easy part.
+Part of the solution to this is to use optimized fake user-agents and browser headers to make your scraper appear more like a real browser. However, this won't work when scraping at scale as your IP address will be static. This is where **web scraping proxies** come in.
 
-The true difficulty of web scraping is in being able to reliably retrieve HTML responses from the pages you want to scrape.
+Web scraping proxies are IP addresses that you route your requests through instead of using your own or servers IP address.
 
-This is because most websites want to limit or completely stop your ability to scrape data from their websites.
+We need them when web scraping as they allow us to spread our requests over thousands of proxies so that you can easily scrape a website at scale, without the target website blocking us.
 
-Websites use a number of methods to detect and ban scrapers from extracting their data:
+If you doing a very small scraping project or scraping a website without sophisticated anti-bot countermeasures then you mightn't need them. However, when you start scraping big websites or at larger volumes then proxies quickly become a must as they allow you to:
 
-- **IP Address**
-- **TLS** or **TCP/IP fingerprint**
-- **HTTP headers** (values, order and cases used)
-- **Browser fingerprints**
-- **Cookies/Sessions**
+- Bypass anti-bot countermeasures
+- Get country-specific data from websites
+- Hide your identity from the websites you are scraping
 
-For more information on the above, then check out our [how to scrape without getting blocked guide here](https://scrapeops.io/web-scraping-playbook/web-scraping-without-getting-blocked/).
+There are many different types of proxies (datacenter proxies, residential proxies, mobile proxies, ISP proxies, SOAX proxies), however, for the purposes of this guide we will focus on how to integrate them into our Scrapy spiders.
 
-However, the most important and easiest to mitigate ways of bypassing a websites anti-bot protection systems is to **fake your headers and user-agents**, and use **rotating proxy pools**.
+## The 3 Most Popular Proxy Integration Methods
 
-We will look at how you can integrate and rotate proxies with Scrapy.
+When it comes to proxies there are 3 main integration methods that are most commonly used:
 
-However, for this we will focus why and how you should use fake headers and user-agents when scraping.
+1. Proxy Lists
+2. Rotating/Backconnect Proxies
+3. Proxy APIs
 
-## What Are User-Agents & Why Do We Need To Manage Them?
+All 3 have their pros and cons, and can have an impact on whether you have dedicated proxies or proxies in a shared pool. However, which type you use is really down to your own personal preferences and project requirements (budget, performance, ease of use, etc).
 
-User Agents are strings that let the website you are scraping identify the application, operating system (OSX/Windows/Linux), browser (Chrome/Firefox/Internet Explorer), etc. of the user sending a request to their website. They are sent to the server as part of the request headers.
+The cheapest proxies are ones where you can buy **lists of individual proxy IPs** and route your requests through them. However, these are often the most unreliable and hardest to integrate as you have build a lot of logic to manage the IPs, remove dead IPs and source new IPs once your existing ones get blocked.
 
-Here is an example User agent sent when you visit a website with a Chrome browser:
+The easiest proxies to use are **smart proxies** that either allow you to send your requests to a single proxy endpoint or to an HTTP API.
 
-```bash
-user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.82 Safari/537.36
+These smart proxy providers take care of all the **proxy selection**, **rotation**, **ban detection**, etc. within their proxy, and allow you to easily enable extra functionality like JS rendering, country-level geotargeting, residential proxies, etc. by simply adding some flags to your request.
+
+Examples of smart proxy providers are: [ScrapeOps](https://scrapeops.io/), [ScraperAPI](https://www.scraperapi.com/?fp_ref=scrapeops), [Scrapingbee](https://www.scrapingbee.com/?fpr=scrapeops)
+
+
+## How To Integrate & Rotate Proxy Lists
+
+The most fundamental way of using proxies, is to insert a list of proxy IPs into your spider and configure it to select a random proxy every time it makes a request.
+
+```python
+'proxy1.com:8000',
+'proxy2.com:8031',
+'proxy3.com:8032',
 
 ```
 
-When scraping a website, you also need to set user-agents on every request as otherwise the website may block your requests because it knows you aren't a real user.
+When you sign up to some proxy providers, they will give you a list of proxy IP addresses that you will then need to use in your spider. Most free proxy lists online use this approach and some large providers still offer this method for datacenter IPs or if you want dedicated proxies.
 
-In the case of Scrapy. When you use Scrapy with the default settings, the user-agent your spider sends is the following by default:
+Here are a list of sources to get **free proxy lists**:
+
+- [FreeProxyLists](https://www.freeproxylists.net/)
+- [Geonode Free Proxy Lists](https://geonode.com/free-proxy-list)
+- [ProxyNova](https://www.proxynova.com/proxy-server-list/)
+
+Free Proxy Lists
+
+Free proxy lists are notoriously unreliable and seldom work for protected websites as anti-bot companies can scrape the free proxy lists and automatically ban any IP address that appears on one of these lists.
+
+If you want to scrape protected websites, then you will likely need to purchase proxy IPs from a proxy provider. Here is a tool that allows you to [compare the proxy plans of different proxies who sell lists of proxies](https://scrapeops.io/proxy-providers/comparison/best-proxy-ips) to users.
+
+To integrate a list of proxies with your spider, we can build our own proxy management layer or we can simply install an existing Scrapy middleware that will manage our proxy list for us.
+
+There are several free Scrapy middlewares out there that you can choose from (like [scrapy-proxies](https://github.com/aivarsk/scrapy-proxies)), however, for this guide we're going to use the [scrapy-rotating-proxies](https://github.com/TeamHG-Memex/scrapy-rotating-proxies) middleware as it was developed by some of Scrapy's lead maintainers and has some really cool functionality.
+
+[scrapy-rotating-proxies](https://github.com/TeamHG-Memex/scrapy-rotating-proxies) is very easy to setup and very customizable. To get started simply install the middleware:
 
 ```bash
-Scrapy/VERSION (+https://scrapy.org)
+pip install scrapy-rotating-proxies
 
 ```
 
-This user agent will clearly identify your requests as coming from a web scraper, so the website can easily block you from scraping the site.
-
-That is why we need to manage the user-agents Scrapy sends with our requests.
-
-## How To Set A Fake User-Agent In Scrapy
-
-There are a couple of ways to set new user agent for your spiders to use.
-
-### 1. Set New Default User-Agent
-
-The easiest way to change the default Scrapy user-agent is to set a default user-agent in your `settings.py` file.
-
-Simply uncomment the `USER_AGENT` value in the `settings.py` file and add a new user agent:
+Then we just need to update our `settings.py` to load in our proxies and enable the **scrapy-rotating-proxies** middleware:
 
 ```python
 ## settings.py
-USER_AGENT = 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
-
-```
-
-### 2. Add A User-Agent To Every Request
-
-Another option is to set a user-agent on every request your spider makes by defining a user-agent in the headers of your request:
-
-```python
-## myspider.py
-def start_requests(self):
-    for url in self.start_urls:
-    return Request(url=url, callback=self.parse,
-                       headers={"User-Agent": "Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"})
-
-```
-
-Both of these options work, however, you will have the same user-agent for every single request which the target website might pick up on and block you for. That is why we need to have a list of user-agents and select a random one for every request.
-
-## How To Rotate User Agents
-
-Rotating through user-agents is also pretty straightforward, and we need a list of user-agents in our spider and use a random one with every request we make using a similar approach to [option #2 above](https://scrapeops.io/python-scrapy-playbook/freecodecamp-beginner-course/freecodecamp-scrapy-beginners-course-part-8-fake-headers-user-agents/#2-add-a-user-agent-to-every-request).
-
-```python
-## myspider.py
-import random
-user_agent_list = [
-'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.82 Safari/537.36',
-'Mozilla/5.0 (iPhone; CPU iPhone OS 14_4_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1',
-'Mozilla/4.0 (compatible; MSIE 9.0; Windows NT 6.1)',
-'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.141 Safari/537.36 Edg/87.0.664.75',
-'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.102 Safari/537.36 Edge/18.18363',
+## Insert Your List of Proxies Here
+ROTATING_PROXY_LIST = [
+'proxy1.com:8000',
+'proxy2.com:8031',
+'proxy3.com:8032',
 ]
-def start_requests(self):
-    for url in self.start_urls:
-    return Request(url=url, callback=self.parse,
-                       headers={"User-Agent": user_agent_list[random.randint(0, len(user_agent_list)-1)]})
-
-```
-
-This works but it has 2 drawbacks:
-
-1. We need to manage a list of user-agents ourselves.
-2. We would need to implement this into every spider, which isn't ideal.
-
-A better approach would be to use a Scrapy middleware to manage our user-agents for us.
-
-
-## How To Manage Thousands of Fake User Agents
-
-The best approach to managing user-agents in Scrapy is to build or use a custom Scrapy middleware that manages the user agents for you.
-
-You could build a custom middleware yourself if your project has specific requirements like you need to use specific user-agents with specific sites. However, in most cases using a off-the-shelf user-agent middleware is enough.
-
-Developers have realised of user-agent middlewares for Scrapy, however, for this guide we will use [ScrapeOps Fake User-Agent API](https://scrapeops.io/docs/fake-user-agent-headers-api/fake-user-agents/) as it is one of the best available.
-
-### ScrapeOps Fake User-Agent API
-
-The [ScrapeOps Fake User-Agent API](https://scrapeops.io/docs/fake-user-agent-headers-api/fake-user-agents/) is a **free user-agent API**, that returns a list of fake user-agents that you can use in your web scrapers to bypass some simple anti-bot defenses.
-
-To use the **ScrapeOps Fake User-Agents API** you just need to send a request to the API endpoint to retrieve a list of user-agents.
-
-You first need an **API key** which you can get by signing up for a [free account here](https://scrapeops.io/app/register/headers).
-
-```bash
-http://headers.scrapeops.io/v1/user-agents?api_key=YOUR_API_KEY
-
-```
-
-Example response from the API:
-
-```python
-{
-  "result": [
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0.5 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Windows; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.114 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) AppleWebKit/603.3.8 (KHTML, like Gecko) Version/10.1.2 Safari/603.3.8",
-    "Mozilla/5.0 (Windows NT 10.0; Windows; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.114 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Windows; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.114 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36"
-  ]
+## Enable The Proxy Middleware In Your Downloader Middlewares
+DOWNLOADER_MIDDLEWARES = {
+# ...
+'rotating_proxies.middlewares.RotatingProxyMiddleware': 610,
+'rotating_proxies.middlewares.BanDetectionMiddleware': 620,
+# ...
 }
 
 ```
 
-The best way to integrate the **Fake User-Agent API** is to create a Downloader middleware and have a fake user-agent be added to every request. Here is an example middleware you can use:
+And that's it. After this, all requests your spider makes will be proxied using one of the proxies from the `ROTATING_PROXY_LIST`.
 
-```python
-## middlewares.py
-from urllib.parse import urlencode
-from random import randint
-import requests
-class ScrapeOpsFakeUserAgentMiddleware:
-    @classmethod
-    def from_crawler(cls, crawler):
-        return cls(crawler.settings)
-    def __init__(self, settings):
-        self.scrapeops_api_key = settings.get('SCRAPEOPS_API_KEY')
-        self.scrapeops_endpoint = settings.get('SCRAPEOPS_FAKE_USER_AGENT_ENDPOINT', 'http://headers.scrapeops.io/v1/user-agents?')
-        self.scrapeops_fake_user_agents_active = settings.get('SCRAPEOPS_FAKE_USER_AGENT_ENABLED', False)
-        self.scrapeops_num_results = settings.get('SCRAPEOPS_NUM_RESULTS')
-        self.headers_list = []
-        self._get_user_agents_list()
-        self._scrapeops_fake_user_agents_enabled()
-    def _get_user_agents_list(self):
-        payload = {'api_key': self.scrapeops_api_key}
-        if self.scrapeops_num_results is not None:
-            payload['num_results'] = self.scrapeops_num_results
-        response = requests.get(self.scrapeops_endpoint, params=urlencode(payload))
-        json_response = response.json()
-        self.user_agents_list = json_response.get('result', [])
-    def _get_random_user_agent(self):
-        random_index = randint(0, len(self.user_agents_list) - 1)
-        return self.user_agents_list[random_index]
-    def _scrapeops_fake_user_agents_enabled(self):
-        if self.scrapeops_api_key is None or self.scrapeops_api_key == '' or self.scrapeops_fake_user_agents_active == False:
-            self.scrapeops_fake_user_agents_active = False
-        else:
-            self.scrapeops_fake_user_agents_active = True
-
-def process_request(self, request, spider):
-        random_user_agent = self._get_random_user_agent()
-        request.headers['User-Agent'] = random_user_agent
-
-```
-
-**Note:** This middleware example requires the installation of **Python Requests** via `pip install requests`.
-
-And then enable it in our projects `settings.py` file.
+Alternatively, you could give the **scrapy-rotating-proxies** middleware a path to a file that contains the proxy list and your spider will use the proxies from this list when making requests.
 
 ```python
 ## settings.py
-SCRAPEOPS_API_KEY = 'YOUR_API_KEY'
-SCRAPEOPS_FAKE_USER_AGENT_ENABLED = True
-DOWNLOADER_MIDDLEWARES = {
-'bookscraper.middlewares.ScrapeOpsFakeUserAgentMiddleware': 400,
-}
+ROTATING_PROXY_LIST_PATH = '/my/path/proxies.txt'
 
 ```
 
-When activated, the **ScrapeOpsFakeUserAgentMiddleware** will download a list of the most common user-agents from the API and use a random one with every request, so you don't need to create your own list.
+The very cool thing about the **scrapy-rotating-proxies** middleware is that it will actively monitor the health of each individual proxy and remove any dead proxies from the proxy rotation.
 
-To see all the configuration options, then check out the [docs here](https://scrapeops.io/docs/fake-user-agent-headers-api/fake-user-agents/).
+You can also define your own ban detection policies, so you can tell the **scrapy-rotating-proxies** middleware what constitutes a dead proxy so it can remove it from the rotation. For more on this functionality then check out the [docs](https://github.com/TeamHG-Memex/scrapy-rotating-proxies).
 
+## How To Use Rotating/Backconnect Proxies
 
-## Fake Browser Headers vs Fake User-Agents
+Once upon a time, all proxy providers gave you lists of proxy IPs when you purchased a plan with them.
 
-Just adding fake user-agents to your requests will help you scrape websites with simple anti-bot protection systems, however, for websites with proper anti-bot protection just setting users-agents isn't enough.
+However, today it is far more common for them to provide you with a single proxy endpoint that you send your requests to and they handle the selection and rotation of the proxies on their end. Making it much easier for you to integrate a proxy solution into your spider.
 
-To convince these websites (Amazon, Google, etc.) you aren't a scraper you must be using fake browser headers to mimic mimic the browser fingerprints of real users.
+For these examples, we're going to show you how to integrate [SmartProxy's Residential Proxies](https://smartproxy.pxf.io/q4DVKN) into our `bookscraper` as they offer good proxies and have pay-as-you-go plans. Making SmartProxy ideal for both small and large web scraping projects.
 
-For example, here is an example of the headers a **Chrome browser on a MacOS machine** would send to a website:
+Other examples of rotating single endpoint proxy providers are [BrightData](https://brightdata.grsm.io/1pl6t3r3cfbp) and [Oxylabs](https://oxylabs.go2cloud.org/aff_c?offer_id=7&aff_id=379).
+
+To use Smartproxy as your proxy provider you just need to send all your requests to their proxy endpoint (different endpoints based on types of proxies used & features enabled):
 
 ```bash
-Host: 127.0.0.1:65432
-Connection: keep-alive
-Cache-Control: max-age=0
-sec-ch-ua: " Not A;Brand";v="99", "Chromium";v="99", "Google Chrome";v="99"
-sec-ch-ua-mobile: ?0
-sec-ch-ua-platform: "macOS"
-Upgrade-Insecure-Requests: 1
-User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.83 Safari/537.36
-Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9
-Sec-Fetch-Site: none
-Sec-Fetch-Mode: navigate
-Sec-Fetch-User: ?1
-Sec-Fetch-Dest: document
-Accept-Encoding: gzip, deflate, br
-Accept-Language: en-GB,en-US;q=0.9,en;q=0.8
+"http://username:password@gate.smartproxy.com:7000"
 
 ```
 
-These fake browser headers include fake user-agents but also a lot of other headers that a real browser would typically send to the website.
+In the above example, we would be using SmartProxy's standard rotating residential endpoint, that will route your requests to a different random IP address with every request. You can obtain the `username` and `password` from the Smartproxy dashboard.
 
-As a result, if your requests don't contain the correct browser headers it is very easy for anti-bot protection systems to determine that the requests are not coming from a real users browser. So they block the requests.
+You can simply set the country of the IP addresses by changing the proxy port string (using random **US proxies** in this case):
 
-Optimizing fake browser headers is a whole topic in of itself, so if you would like to learn more about it then [check out our guide to fake browser headers](https://scrapeops.io/web-scraping-playbook/web-scraping-guide-header-user-agents/).
+```bash
+"http://username:password@us.smartproxy.com:7000"
 
-## Using Fake Browser Headers With Scrapy
+```
 
-You can add fake browser headers just as you would add fake user-agents as user-agents are just one type of header:
+Or use sticky sessions by adding a `sessionduration` and a different port number to the proxy string:
+
+```bash
+"http://username-sessionduration-10:password@gate.smartproxy.com:10000"
+"http://username-sessionduration-10:password@gate.smartproxy.com:10001"
+"http://username-sessionduration-10:password@gate.smartproxy.com:10002"
+
+```
+
+For more information on using a single endpoint proxy solution like Smartproxy, then [check out their documentation](https://help.smartproxy.com/docs/residential-authentication-methods).
+
+You have a couple of options on how you integrate one of these single rotating proxy endpoints into your spider.
+
+Single Endpoint Proxy
+
+When using a single proxy endpoint, you shouldn't use a rotating proxy middleware like the **scrapy-rotating-proxies** middleware as it could interfere with the correct functioning of the proxy.
+
+### 1. Via Request Parameters
+
+Simply include the proxy connection details in the meta field of every request within your spider.
 
 ```python
-## myspider.py
+## your_spider.py
 def start_requests(self):
-    fake_browser_header = {
-"upgrade-insecure-requests": "1",
-"user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36",
-"accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-"sec-ch-ua": "\".Not/A)Brand\";v=\"99\", \"Google Chrome\";v=\"103\", \"Chromium\";v=\"103\"",
-"sec-ch-ua-mobile": "?0",
-"sec-ch-ua-platform": "\"Linux\"",
-"sec-fetch-site": "none",
-"sec-fetch-mod": "",
-"sec-fetch-user": "?1",
-"accept-encoding": "gzip, deflate, br",
-"accept-language": "fr-CH,fr;q=0.9,en-US;q=0.8,en;q=0.7"
-}
-for url in self.start_urls:
-return Request(url=url, callback=self.parse, headers=fake_browser_header)
+	for url in self.start_urls:
+	return Request(url=url, callback=self.parse,
+	                   meta={"proxy": "http://username:password@gate.smartproxy.com:70"})
 
 ```
 
-### ScrapeOps Fake Browser Header API
+Scrapy's [HttpProxyMiddleware](https://docs.scrapy.org/en/latest/topics/downloader-middleware.html#module-scrapy.downloadermiddlewares.httpproxy), which is enabled by default, will then route the request through the proxy you defined.
 
-The [ScrapeOps Fake Browser Header API](https://scrapeops.io/docs/fake-user-agent-headers-api/fake-browser-headers/) is a **free fake browser header API**, that returns a list of fake browser headers that you can use in your web scrapers to bypass more complex anti-bot defenses.
+### 2. Create Custom Middleware
 
-To use the **ScrapeOps Fake Browser Headers API** you just need to send a request to the API endpoint to retrieve a list of user-agents.
+A cleaner and more modular approach is to create a custom middleware which you then enable in your `settings.py` file. This will ensure all spiders will use the proxy.
 
-You first need an **API key** which you can get by signing up for a [free account here](https://scrapeops.io/app/register/headers).
-
-```
-http://headers.scrapeops.io/v1/browser-headers?api_key=YOUR_API_KEY
-
-```
-
-The best way to integrate the **Fake Browser Headers API** is to create a Downloader middleware and have a fake browser headers be added to every request. Here is an example middleware you can use:
+Here is an example custom middleware that you can add to your `middlewares.py` file:
 
 ```python
 ## middlewares.py
+import base64
+class MyProxyMiddleware(object):
+	@classmethod
+	def from_crawler(cls, crawler):
+		return cls(crawler.settings)
+	def __init__(self, settings):
+	        self.user = settings.get('PROXY_USER')
+	        self.password = settings.get('PROXY_PASSWORD')
+	        self.endpoint = settings.get('PROXY_ENDPOINT')
+	        self.port = settings.get('PROXY_PORT')
+	def process_request(self, request, spider):
+	        user_credentials = '{user}:{passw}'.format(user=self.user, passw=self.passwod)
+		        basic_authentication = 'Basic ' + base64.b64encode(user_credentials
+					        .encode()).decode()
+	        host = 'http://{endpoint}:{port}'.format(endpoint=self.endpoint, 
+														        port=self.port)
+	        request.meta['proxy'] = host
+	        request.headers['Proxy-Authorization'] = basic_authentication
+
+```
+
+Then you just need to enable it in your `settings.py` file, and fill in your proxy connection details:
+
+```python
+## settings.py
+PROXY_USER = 'username'
+PROXY_PASSWORD = 'password'
+PROXY_ENDPOINT = 'gate.smartproxy.com'
+PROXY_PORT = '7000'
+DOWNLOADER_MIDDLEWARES = {
+'bookscraper.middlewares.MyProxyMiddleware': 350,
+'scrapy.downloadermiddlewares.httpproxy.HttpProxyMiddleware': 400,
+}
+
+```
+
+**Note:** For this middleware to work correctly, you will need to put it before the default [Scrapy HttpProxyMiddleware](https://docs.scrapy.org/en/latest/topics/downloader-middleware.html#module-scrapy.downloadermiddlewares.httpproxy) by assign it a lower number.
+
+## How To Use Proxy APIs
+
+Over the last few years, a number of smart proxy solutions have been launched that take care of all the proxy/user-agent selection, rotation, ban detection, and are easily customizable.
+
+Typically, these smart proxy solutions allow you to make requests via their HTTP endpoint. Some even have dedicated SDKs and traditional proxy endpoints.
+
+Instead, of adding a proxy to your request, you send the URL you want to scrape to them via their API and then they return the HTML response to you. Only charging you if the request has been successful.
+
+The advantages of Smart Proxy APIs is that they:
+
+- Manage optimizing the browser headers and user-agents for you.
+- Enable you to use headless browsers & other advanced features by adding query parameters.
+- Automatically optimize proxy selection for your target domains.
+
+For this example, we're going to use the [ScrapeOps Proxy Aggregator](https://scrapeops.io/proxy-aggregator/).
+
+### 1. Integrating Into Spider
+
+To send the pages we want to scrape to **ScrapeOps** we simply just need to forward the URLs we want to scrape to their API endpoint.
+
+```bash
+"https://proxy.scrapeops.io/v1/?api_key=YOUR_API_KEY&url=http://example.com/"
+
+```
+
+We can do this by creating a simple function:
+
+```python
+## booksspider.py
+API_KEY = 'YOUR_API_KEY'
+def get_proxy_url(url):
+    payload = {'api_key': API_KEY, 'url': url}
+    proxy_url = 'https://proxy.scrapeops.io/v1/?' + urlencode(payload)
+    return proxy_url
+
+```
+
+And use this function in our Scrapy request:
+
+```python
+yield scrapy.Request(url=get_proxy_url(url), callback=self.parse)
+
+```
+
+This is how your final code should look.
+
+```python
+import scrapy
 from urllib.parse import urlencode
-from random import randint
-import requests
-class ScrapeOpsFakeBrowserHeaderAgentMiddleware:
+API_KEY = 'YOUR_API_KEY'
+def get_proxy_url(url):
+    payload = {'api_key': API_KEY, 'url': url}
+    proxy_url = 'https://proxy.scrapeops.io/v1/?' + urlencode(payload)
+    return proxy_url
+class BookspiderSpider(scrapy.Spider):
+    name = 'bookspider'
+    allowed_domains = ['books.toscrape.com']
+    start_urls = ['https://books.toscrape.com/']
+    def parse(self, response):
+        books = response.css('article.product_pod')
+        for book in books:
+            relative_url = book.css('h3 a').attrib['href']
+            if 'catalogue/' in relative_url:
+                book_url = 'https://books.toscrape.com/' + relative_url
+            else:
+                book_url = 'https://books.toscrape.com/catalogue/' + relative_url
+        yield scrapy.Request(get_proxy_url(book_url), callback=self.parse_book_page)
+        ## Next Page
+        next_page = response.css('li.next a ::attr(href)').get()
+        if next_page is not None:
+            if 'catalogue/' in next_page:
+                next_page_url = 'https://books.toscrape.com/' + next_page
+            else:
+                next_page_url = 'https://books.toscrape.com/catalogue/' + next_page
+        yield scrapy.Request(get_proxy_url(next_page_url), callback=self.parse)
+    def parse_book_page(self, response):
+        book = response.css("div.product_main")[0]
+        table_rows = response.css("table tr")
+        yield {
+            'url': response.url,
+            'title': book.css("h1 ::text").get(),
+            'upc': table_rows[0].css("td ::text").get(),
+            'product_type': table_rows[1].css("td ::text").get(),
+            'price_excl_tax': table_rows[2].css("td ::text").get(),
+            'price_incl_tax': table_rows[3].css("td ::text").get(),
+            'tax': table_rows[4].css("td ::text").get(),
+            'availability': table_rows[5].css("td ::text").get(),
+            'num_reviews': table_rows[6].css("td ::text").get(),
+            'stars': book.css("p.star-rating").attrib['class'],
+            'category': book.xpath("//ul[@class='breadcrumb']/li[@class='active']/preceding-sibling::li[1]/a/text()").get(),
+            'description': book.xpath("//div[@id='product_description']/following-sibling::p/text()").get(),
+            'price': book.css('p.price_color ::text').get(),
+        }
+
+```
+
+### 2. Using Proxy Middleware
+
+The better approach to integrating proxy APIs into Scrapy spiders is by using a proxy middleware as there can be issues following URLs unless you customize the code to account for the Proxy URL.
+
+Here you can either create your own middleware or some providers have built proxy middlewares for you to use.
+
+With ScrapeOps they have a prebuilt proxy middleware that you can use.
+
+You can quickly install it into your project using the following command:
+
+```bash
+pip install scrapeops-scrapy-proxy-sdk
+
+```
+
+And then enable it in your project in the `settings.py` file.
+
+```python
+SCRAPEOPS_API_KEY = 'YOUR_API_KEY'
+SCRAPEOPS_PROXY_ENABLED = True
+DOWNLOADER_MIDDLEWARES = {
+    'scrapeops_scrapy_proxy_sdk.scrapeops_scrapy_proxy_sdk.ScrapeOpsScrapyProxySdk': 725,
+}
+
+```
+
+The other approach is to create a custom **Downloader Middleware** and activate it for the entire project, each spider individually or on each request. Here is an example middleware you can use:
+
+```python
+## middlewares.py
+
+from urllib.parse import urlencode
+from scrapy import Request
+
+class ScrapeOpsProxyMiddleware:
+
     @classmethod
     def from_crawler(cls, crawler):
         return cls(crawler.settings)
+
     def __init__(self, settings):
         self.scrapeops_api_key = settings.get('SCRAPEOPS_API_KEY')
-        self.scrapeops_endpoint = settings.get('SCRAPEOPS_FAKE_BROWSER_HEADER_ENDPOINT', 'http://headers.scrapeops.io/v1/browser-headers?')
-        self.scrapeops_fake_browser_headers_active = settings.get('SCRAPEOPS_FAKE_BROWSER_HEADER_ENABLED', False)
-        self.scrapeops_num_results = settings.get('SCRAPEOPS_NUM_RESULTS')
-        self.headers_list = []
-        self._get_headers_list()
-        self._scrapeops_fake_browser_headers_enabled()
+        self.scrapeops_endpoint = 'https://proxy.scrapeops.io/v1/?'
+        self.scrapeops_proxy_active = settings.get('SCRAPEOPS_PROXY_ENABLED', False)
+        self._clean_proxy_settings(settings.get('SCRAPEOPS_PROXY_SETTINGS'))
 
-    def _get_headers_list(self):
-        payload = {'api_key': self.scrapeops_api_key}
-        if self.scrapeops_num_results is not None:
-            payload['num_results'] = self.scrapeops_num_results
-        response = requests.get(self.scrapeops_endpoint, params=urlencode(payload))
-        json_response = response.json()
-        self.headers_list = json_response.get('result', [])
+    @staticmethod
+    def _replace_response_url(response):
+        real_url = response.headers.get(
+            'Sops-Final-Url', def_val=response.url)
+        return response.replace(
+            url=real_url.decode(response.headers.encoding))
+    
+    def _clean_proxy_settings(self, proxy_settings):
+        if proxy_settings is not None:
+            for key, value in proxy_settings.items():
+                clean_key = key.replace('sops_', '')
+                self.scrapeops_proxy_settings[clean_key] = value
+    
+    def _get_scrapeops_url(self, request):
+        payload = {'api_key': self.scrapeops_api_key, 'url': request.url}
+        
+        ## Global Request Settings
+        if self.scrapeops_proxy_settings is not None:
+            for key, value in self.scrapeops_proxy_settings.items():
+                payload[key] = value
 
+        ## Request Level Settings 
+        for key, value in request.meta.items():
+            if 'sops_' in key:
+                clean_key = key.replace('sops_', '')
+                payload[clean_key] = value
 
-    def _get_random_browser_header(self):
-        random_index = randint(0, len(self.headers_list) - 1)
-        return self.headers_list[random_index]
+        proxy_url = self.scrapeops_endpoint + urlencode(payload)
+        return proxy_url
 
-
-    def _scrapeops_fake_browser_headers_enabled(self):
-        if self.scrapeops_api_key is None or self.scrapeops_api_key == '' or self.scrapeops_fake_browser_headers_active == False:
-            self.scrapeops_fake_browser_headers_active = False
-        else:
-            self.scrapeops_fake_browser_headers_active = True
-
+    def _scrapeops_proxy_enabled(self):
+        if self.scrapeops_api_key is None or self.scrapeops_api_key == '' or self.scrapeops_proxy_active == False:
+            return False
+        return True
+    
     def process_request(self, request, spider):
-        random_browser_header = self._get_random_browser_header()
-        request.headers = random_browser_header
+        if self._scrapeops_proxy_enabled is False or self.scrapeops_endpoint in request.url:
+            return None
+        
+        scrapeops_url = self._get_scrapeops_url(request)
+        new_request = request.replace(
+            cls=Request, url=scrapeops_url, meta=request.meta)
+        return new_request
+
+    def process_response(self, request, response, spider):
+        new_response = self._replace_response_url(response)
+        return new_response
+
 
 ```
 
-**Note:** This middleware example requires the installation of **Python Requests** via `pip install requests`.
-
-And then enable it in our projects `settings.py` file.
+And then enable it in your project in the `settings.py` file.
 
 ```python
 ## settings.py
 SCRAPEOPS_API_KEY = 'YOUR_API_KEY'
-SCRAPEOPS_FAKE_BROWSER_HEADER_ENABLED = True
+SCRAPEOPS_PROXY_ENABLED = True
 DOWNLOADER_MIDDLEWARES = {
-    'bookscraper.middlewares.ScrapeOpsFakeBrowserHeaderAgentMiddleware': 400,
+    'YOUR_PROJECT_NAME.middlewares.ScrapeOpsProxyMiddleware': 725,
 }
 
 ```
 
-When activated, the **ScrapeOpsFakeBrowserHeaderAgentMiddleware** will download a list of the most common browser headers from the API and use a random one with every request, so you don't need to create your own list.
+Now when you run your spiders, the requests will be automatically sent through the [ScrapeOps Proxy API Aggregator](https://scrapeops.io/proxy-aggregator/).
 
-To see all the configuration options, then check out the [docs here](https://scrapeops.io/docs/fake-user-agent-headers-api/fake-browser-headers/).
+Replace `YOUR_PROJECT_NAME`
 
+Remember to swap the `YOUR_PROJECT_NAME` for the name of your project (`BOT_NAME` in your `settings.py` file).
+
+Most proxy APIs allow you to use advanced functionality like JS rendering or country-level geotargeting by adding extra query parameters to your API query.
+
+You can apply the proxy setting to every spider that runs in your project by adding a `SCRAPEOPS_PROXY_SETTINGS` dictionary to your `settings.py` file with the extra features you want to enable.
+
+```python
+SCRAPEOPS_API_KEY = 'YOUR_API_KEY'
+SCRAPEOPS_PROXY_ENABLED = True
+SCRAPEOPS_PROXY_SETTINGS = {'country': 'us'}
+DOWNLOADER_MIDDLEWARES = {
+'scrapeops_scrapy_proxy_sdk.scrapeops_scrapy_proxy_sdk.ScrapeOpsScrapyProxySdk': 725,
+}
+
+```
 
 ## Next Steps
 
-In this part, we looked at why you need to manage your scrapers user-agents and headers when scraping websites. Along with how to manage them in Scrapy.
+In this part, we looked at why you need to use proxies to scale your web scraping without getting blocked. We gave examples on how to integrate the 3 most common types of proxies into our Scrapy spiders.
 
-Optimizing your scrapers headers will help you bypass some anti-protection systems when scraping at smaller scales. However, when scraping at scale your requests are highly likely to get detected and blocked by websites as you will be using the same IP address for every request.
-
-So in [Part 9](https://scrapeops.io/python-scrapy-playbook/freecodecamp-beginner-course/freecodecamp-scrapy-beginners-course-part-9-rotating-proxies/), we will look at how you can use rotating proxy pools to hide your IP address and scrape at scale without getting blocked.
+So in [Part 10](https://scrapeops.io/python-scrapy-playbook/freecodecamp-beginner-course/freecodecamp-scrapy-beginners-course-part-10-deployment-scrapyd/), we will look at how you can use [Scrapyd](https://scrapyd.readthedocs.io/en/stable/) to deploy and run our spiders in the cloud, and control them using [ScrapeOps](https://scrapeops.io/monitoring-scheduling/) and [ScrapydWeb](https://github.com/my8100/scrapydweb).
